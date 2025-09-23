@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 
+# IDE and development tools
+.claude/
+.conda/
+
 # Python
 __pycache__/
 *.py[cod]
