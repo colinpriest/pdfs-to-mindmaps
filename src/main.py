@@ -9,7 +9,10 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .pdf.extract import PDFExtractor
 from .steps.section_labeler import label_section
+from .steps.generic_section_labeler import label_generic_section
 from .steps.per_paper_extract import extract_paper
+from .steps.generic_document_extract import extract_generic_document
+from .steps.content_type_detector import detect_content_type
 from .steps.cluster_topics import cluster_topics
 from .steps.normalize_techniques import normalize_techniques
 from .graph.build import build_graph_and_write
@@ -24,14 +27,67 @@ def process_single_pdf(args):
     pages = extractor.extract_pages(pdf)
     chunks = extractor.chunkify(pdf_id, pages)
     
-    # Label sections via LLM
-    chunks_labeled = []
-    for ch in chunks:
-        lab = label_section(ch["text"])
-        chunks_labeled.append({**ch, "section": lab.section, "confidence": lab.confidence})
+    if not chunks:
+        print(f"Warning: No text extracted from {pdf.stem}")
+        return None
     
-    # Per-paper topics + techniques
-    per_paper = extract_paper(pdf_id, chunks_labeled)
+    # Detect content type using first few chunks
+    sample_content = " ".join([ch["text"] for ch in chunks[:3]])
+    content_type = detect_content_type(sample_content)
+    
+    print(f"Processing {pdf.stem}: {content_type.content_type} (confidence: {content_type.confidence:.2f})")
+    
+    # Label sections based on content type
+    chunks_labeled = []
+    if content_type.content_type == "scientific_paper":
+        # Use scientific section labeling
+        for ch in chunks:
+            lab = label_section(ch["text"])
+            chunks_labeled.append({**ch, "section": lab.section, "confidence": lab.confidence})
+        
+        # Extract using scientific paper approach
+        per_paper = extract_paper(pdf_id, chunks_labeled)
+        topics = per_paper.topics
+        techniques = per_paper.techniques
+        per_paper_data = json.loads(per_paper.model_dump_json())
+        
+    else:
+        # Use generic section labeling
+        for ch in chunks:
+            lab = label_generic_section(ch["text"])
+            chunks_labeled.append({**ch, "section": lab.section, "confidence": lab.confidence})
+        
+        # Extract using generic document approach
+        generic_extraction = extract_generic_document(pdf_id, chunks_labeled)
+        
+        # Convert generic extraction to match expected format
+        topics = []
+        techniques = []
+        per_paper_data = {
+            "pdf_id": pdf_id,
+            "topics": [],
+            "techniques": []
+        }
+        
+        # Convert generic topics to paper topics format
+        for topic in generic_extraction.topics:
+            paper_topic = {
+                "id": topic.id,
+                "label": topic.label,
+                "evidence_chunks": [{"chunk_id": ev.chunk_id, "rationale": ev.rationale} for ev in topic.evidence_chunks]
+            }
+            topics.append(paper_topic)
+            per_paper_data["topics"].append(paper_topic)
+        
+        # Convert generic concepts to techniques format
+        for concept in generic_extraction.concepts:
+            technique = {
+                "canonical": concept.canonical,
+                "variants": concept.variants,
+                "evidence_chunks": [{"chunk_id": ev.chunk_id, "rationale": ev.rationale} for ev in concept.evidence_chunks]
+            }
+            techniques.append(technique)
+            per_paper_data["techniques"].append(technique)
     
     # Extract paper content for graph building
     paper_content = [ch["text"] for ch in chunks_labeled]
@@ -39,9 +95,11 @@ def process_single_pdf(args):
     return {
         "pdf_id": pdf_id,
         "title": pdf.stem,
-        "per_paper": json.loads(per_paper.model_dump_json()),
-        "topics": per_paper.topics,
-        "techniques": per_paper.techniques,
+        "content_type": content_type.content_type,
+        "content_type_confidence": content_type.confidence,
+        "per_paper": per_paper_data,
+        "topics": topics,
+        "techniques": techniques,
         "content": paper_content
     }
 
@@ -74,20 +132,38 @@ def run(pdf_dir: Path, out_dir: Path, topics: int, chunk_words: int, chunk_overl
             try:
                 result = future.result()
                 
+                if result is None:
+                    continue  # Skip failed extractions
+                
                 # Aggregate results
                 per_paper_results.append(result["per_paper"])
-                paper_rows.append({"pdf_id": result["pdf_id"], "title": result["title"]})
+                paper_rows.append({
+                    "pdf_id": result["pdf_id"], 
+                    "title": result["title"],
+                    "content_type": result.get("content_type", "unknown"),
+                    "content_type_confidence": result.get("content_type_confidence", 0.0)
+                })
                 papers_content[result["pdf_id"]] = result["content"]
                 
                 # Aggregate for corpus clustering
                 for t in result["topics"]:
-                    paper_level_topics_flat.append({"id": t.id, "label": t.label})
+                    # Handle both dict and object formats
+                    if isinstance(t, dict):
+                        paper_level_topics_flat.append({"id": t["id"], "label": t["label"]})
+                    else:
+                        paper_level_topics_flat.append({"id": t.id, "label": t.label})
                 
                 # Technique candidates
                 for te in result["techniques"]:
-                    technique_candidates.add(te.canonical)
-                    for v in te.variants:
-                        technique_candidates.add(v)
+                    # Handle both dict and object formats
+                    if isinstance(te, dict):
+                        technique_candidates.add(te["canonical"])
+                        for v in te.get("variants", []):
+                            technique_candidates.add(v)
+                    else:
+                        technique_candidates.add(te.canonical)
+                        for v in te.variants:
+                            technique_candidates.add(v)
                         
             except Exception as e:
                 pdf_idx, pdf_path, _ = future_to_pdf[future]

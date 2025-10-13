@@ -11,6 +11,13 @@ class TextRelevance(BaseModel):
     confidence: float = Field(..., description="Confidence score (0.0 to 1.0) of the relevance assessment.")
 
 
+class ContentType(BaseModel):
+    """Schema for classifying document content type."""
+    content_type: Literal["scientific_paper", "other"] = Field(..., description="The type of document content.")
+    confidence: float = Field(ge=0, le=1, description="Confidence score (0.0 to 1.0) of the classification.")
+    reasoning: str = Field(..., description="Brief explanation of why this classification was chosen.")
+
+
 class SectionLabel(BaseModel):
     """Schema for labeling a section of a research paper."""
     section: str = Field(..., description="The most likely section label (e.g., 'Abstract', 'Introduction', 'Methods', 'Results', 'Conclusion', 'References').")
@@ -69,3 +76,31 @@ class TechniqueGroup(BaseModel):
 
 class NormalizedTechniques(BaseModel):
     groups: List[TechniqueGroup]
+
+
+# Generic schemas for non-scientific documents
+class GenericSectionLabel(BaseModel):
+    """Schema for labeling sections in any type of document."""
+    section: str = Field(..., description="The most likely section label (e.g., 'Introduction', 'Main Content', 'Summary', 'Conclusion', 'Other').")
+    confidence: float = Field(ge=0, le=1)
+
+
+class GenericTopic(BaseModel):
+    """Schema for topics extracted from any type of document."""
+    id: str
+    label: str
+    evidence_chunks: List[ChunkEvidence]
+
+
+class GenericConcept(BaseModel):
+    """Schema for concepts/approaches extracted from any type of document."""
+    canonical: str
+    variants: List[str] = []
+    evidence_chunks: List[ChunkEvidence] = []
+
+
+class GenericExtraction(BaseModel):
+    """Schema for extracting topics and concepts from any type of document."""
+    pdf_id: str
+    topics: List[GenericTopic]
+    concepts: List[GenericConcept]

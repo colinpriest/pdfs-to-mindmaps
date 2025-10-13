@@ -9,12 +9,14 @@ This tool processes a collection of PDF papers and creates comprehensive mind ma
 ## What it does
 
 1. **Extracts text** from PDFs using PyMuPDF
-2. **Analyzes content** using ChatGPT to:
-   - Label document sections
-   - Extract topics and techniques with supporting evidence
+2. **Detects content type** using ChatGPT to classify documents as scientific papers or other types
+3. **Analyzes content** using ChatGPT with appropriate prompts:
+   - **Scientific papers**: Traditional academic analysis with sections like Abstract, Methods, Results
+   - **Other documents**: Generic analysis suitable for business reports, articles, manuals, etc.
+   - Extract topics and techniques/concepts with supporting evidence
    - Cluster related topics across the corpus
-   - Normalize technique names and variants
-3. **Generates outputs**:
+   - Normalize technique/concept names and variants
+4. **Generates outputs**:
    - Interactive HTML graph (`graph.html`) with Cytoscape.js
    - Detailed topics report (`topics_report.md`) with summaries and insights
    - Mind map outline (`mindmap_outline.md`) for import into mind mapping tools
@@ -22,6 +24,8 @@ This tool processes a collection of PDF papers and creates comprehensive mind ma
 
 ## Key Features
 
+- **Intelligent content detection** automatically classifies documents as scientific papers or other types
+- **Adaptive processing** uses different analysis approaches based on document type
 - **Multi-threaded processing** for faster PDF analysis
 - **Structured extraction** using Pydantic models for reliable data parsing
 - **Interactive visualization** with zoom, pan, and search capabilities
@@ -101,11 +105,16 @@ python -m src.main --pdf_dir ./papers --out_dir ./output --topics 12 --threads 1
 The pipeline consists of several processing steps:
 
 1. **PDF Extraction** (`src/pdf/extract.py`): Text extraction and chunking
-2. **Section Labeling** (`src/steps/section_labeler.py`): Document structure analysis
-3. **Per-Paper Analysis** (`src/steps/per_paper_extract.py`): Topic and technique extraction
-4. **Topic Clustering** (`src/steps/cluster_topics.py`): Cross-paper topic grouping
-5. **Technique Normalization** (`src/steps/normalize_techniques.py`): Technique name standardization
-6. **Graph Building** (`src/graph/build.py`): Visualization generation
+2. **Content Type Detection** (`src/steps/content_type_detector.py`): Classifies documents as scientific papers or other types
+3. **Section Labeling**: Document structure analysis
+   - **Scientific papers** (`src/steps/section_labeler.py`): Academic sections (Abstract, Methods, Results, etc.)
+   - **Other documents** (`src/steps/generic_section_labeler.py`): Generic sections (Introduction, Main Content, etc.)
+4. **Document Analysis**: Topic and technique/concept extraction
+   - **Scientific papers** (`src/steps/per_paper_extract.py`): Research topics and techniques
+   - **Other documents** (`src/steps/generic_document_extract.py`): General topics and concepts
+5. **Topic Clustering** (`src/steps/cluster_topics.py`): Cross-document topic grouping
+6. **Technique Normalization** (`src/steps/normalize_techniques.py`): Technique/concept name standardization
+7. **Graph Building** (`src/graph/build.py`): Visualization generation
 
 ## Dependencies
 
