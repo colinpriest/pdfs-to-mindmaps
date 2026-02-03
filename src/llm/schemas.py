@@ -11,6 +11,16 @@ class TextRelevance(BaseModel):
     confidence: float = Field(..., description="Confidence score (0.0 to 1.0) of the relevance assessment.")
 
 
+class MergeDecision(BaseModel):
+    """Schema for deciding whether to merge a subtopic into a main topic."""
+    should_merge: bool = Field(..., description="True if the subtopic should be merged into the main topic.")
+    confidence: float = Field(..., description="Confidence score (0.0 to 1.0) of the merge decision.")
+    suggested_label: Optional[str] = Field(
+        None,
+        description="Optional improved label for the merged topic if a merge is suggested.",
+    )
+
+
 class ContentType(BaseModel):
     """Schema for classifying document content type."""
     content_type: Literal["scientific_paper", "other"] = Field(..., description="The type of document content.")

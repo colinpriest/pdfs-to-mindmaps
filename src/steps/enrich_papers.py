@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union, Dict
 from ..llm.client import chat_structured
 from ..llm.schemas import PaperEnrichment
 
@@ -13,12 +13,16 @@ _ENRICH_USER_TPL = (
     "2. The top 2-3 topics the paper is related to."
 )
 
-def enrich_paper(paper_chunks: List[str]) -> PaperEnrichment:
+def enrich_paper(paper_chunks: List[Union[str, Dict[str, str]]]) -> PaperEnrichment:
     """
     Enriches a paper with a summary and topics using an LLM.
     """
     # Combine the first few chunks to get a representative sample of the paper text
-    paper_text = " ".join(paper_chunks[:2])
+    selected_chunks = paper_chunks[:2]
+    chunk_texts = [
+        chunk["text"] if isinstance(chunk, dict) else chunk for chunk in selected_chunks
+    ]
+    paper_text = " ".join(chunk_texts)
     
     prompt = _ENRICH_USER_TPL.format(paper_text=paper_text)
     
@@ -28,7 +32,6 @@ def enrich_paper(paper_chunks: List[str]) -> PaperEnrichment:
         user=prompt,
         temperature=0.2
     )
-
 
 
 

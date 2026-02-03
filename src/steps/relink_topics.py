@@ -35,10 +35,11 @@ def find_relevant_papers_for_topic(
     for paper_id, chunks in papers_content.items():
         # Check a few chunks from the paper for relevance
         for chunk in chunks[:3]:  # Check first 3 chunks for efficiency
+            chunk_text = chunk["text"] if isinstance(chunk, dict) else chunk
             prompt = _RELINK_USER_TPL.format(
                 topic_label=topic_label,
                 topic_summary=topic_summary,
-                text_excerpt=chunk,
+                text_excerpt=chunk_text,
             )
             try:
                 relevance_check = chat_structured(TextRelevance, _RELINK_SYS, prompt)
@@ -49,4 +50,3 @@ def find_relevant_papers_for_topic(
                 print(f"Could not check relevance for paper {paper_id} and topic {topic_label}: {e}")
                 continue
     return relevant_paper_ids
-
