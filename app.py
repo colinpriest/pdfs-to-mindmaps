@@ -95,6 +95,16 @@ def progress_callback(step: str, progress: float, message: str = ""):
     except queue.Full:
         pass  # Skip if queue is full
 
+def coerce_positive_int(value: int | str | None, default: int, minimum: int = 1) -> int:
+    """Convert user-provided values to a bounded positive integer."""
+    if value is None:
+        return max(default, minimum)
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        return max(default, minimum)
+    return max(coerced, minimum)
+
 def run_pipeline_with_progress(pdf_dir: Path, out_dir: Path, topics: int, chunk_words: int, chunk_overlap: int, threads: int):
     """Run the pipeline with progress tracking"""
     try:
@@ -761,10 +771,10 @@ def run_analysis(n_clicks, pdf_folder, output_folder, topics, chunk_words, chunk
             run_pipeline_with_progress(
                 pdf_dir=Path(pdf_folder),
                 out_dir=Path(output_folder),
-                topics=int(topics),
-                chunk_words=int(chunk_words),
-                chunk_overlap=int(chunk_overlap),
-                threads=int(threads)
+                topics=coerce_positive_int(topics, 12, minimum=1),
+                chunk_words=coerce_positive_int(chunk_words, 900, minimum=100),
+                chunk_overlap=coerce_positive_int(chunk_overlap, 120, minimum=0),
+                threads=coerce_positive_int(threads, DEFAULT_THREADS, minimum=1)
             )
         except Exception as exc:
             # Error handling is done in the progress callback
@@ -815,7 +825,10 @@ def display_progress(progress_data):
 
             # Get output directory and create file links
             output_dir = progress_data.get("output_dir", "output")
-            output_path = Path(output_dir)
+            try:
+                output_path = Path(output_dir).expanduser().resolve()
+            except Exception:
+                output_path = Path(output_dir)
 
             # Define the files to check for
             output_files = [
