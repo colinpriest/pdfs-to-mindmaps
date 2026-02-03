@@ -6,6 +6,8 @@ Transform PDF documents into interactive mind maps using AI-powered analysis.
 
 This tool processes a collection of PDF documents and creates comprehensive mind maps that visualize the relationships between topics, techniques, and papers. It uses ChatGPT (via Instructor + Pydantic) to extract structured insights and presents them in multiple formats. It intelligently detects document types — scientific papers get academic-style analysis while business reports, manuals, and other documents receive appropriate generic analysis.
 
+![PDF to Graph Database](pdf-to-graph-database.png)
+
 ## What it does
 
 1. **Extracts text** from PDFs using PyMuPDF
@@ -90,14 +92,14 @@ python -m src.main --pdf_dir ./papers --out_dir ./output --topics 12 --threads 1
 
 ## Configuration Options
 
-| Parameter           | Default      | Description                                 |
-| ------------------- | ------------ | ------------------------------------------- |
-| `--pdf_dir`       | Required     | Directory containing PDF files              |
-| `--out_dir`       | `./output` | Output directory for results                |
-| `--topics`        | `12`       | Number of topic clusters (8-20 recommended) |
-| `--chunk_words`   | `900`      | Words per text chunk                        |
-| `--chunk_overlap` | `120`      | Overlap between chunks                      |
-| `--threads`       | `2× CPU count` | Concurrent processing threads           |
+| Parameter           | Default           | Description                                 |
+| ------------------- | ----------------- | ------------------------------------------- |
+| `--pdf_dir`       | Required          | Directory containing PDF files              |
+| `--out_dir`       | `./output`      | Output directory for results                |
+| `--topics`        | `12`            | Number of topic clusters (8-20 recommended) |
+| `--chunk_words`   | `900`           | Words per text chunk                        |
+| `--chunk_overlap` | `120`           | Overlap between chunks                      |
+| `--threads`       | `2× CPU count` | Concurrent processing threads               |
 
 ## Environment Variables
 
