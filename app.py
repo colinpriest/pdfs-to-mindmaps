@@ -5,10 +5,7 @@ Transform a folder of PDFs into an interactive mind map.
 """
 
 import os
-import time
-import webbrowser
 from pathlib import Path
-import traceback
 import tkinter as tk
 from tkinter import filedialog
 import threading
@@ -22,9 +19,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import the pipeline entry point
-from src.main import run as run_pipeline, DEFAULT_THREADS
+from src.main import DEFAULT_THREADS
 import json
-import threading
 import queue
 
 
@@ -106,7 +102,6 @@ def run_pipeline_with_progress(pdf_dir: Path, out_dir: Path, topics: int, chunk_
 
         # Import required modules
         from pathlib import Path
-        from tqdm import tqdm
         import pandas as pd
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from src.pdf.extract import PDFExtractor
@@ -210,7 +205,9 @@ def run_pipeline_with_progress(pdf_dir: Path, out_dir: Path, topics: int, chunk_
                     per_paper_data["techniques"].append(technique)
 
             # Extract paper content for graph building
-            paper_content = [ch["text"] for ch in chunks_labeled]
+            paper_content = [
+                {"chunk_id": ch["chunk_id"], "text": ch["text"]} for ch in chunks_labeled
+            ]
 
             return {
                 "pdf_id": pdf_id,
@@ -726,7 +723,8 @@ def update_progress(n_intervals, current_progress):
                 break
 
         return current_progress, current_progress.get("running", False)
-    except:
+    except Exception as exc:
+        print(f"Error while updating progress: {exc}")
         return current_progress, True
 
 
@@ -768,9 +766,9 @@ def run_analysis(n_clicks, pdf_folder, output_folder, topics, chunk_words, chunk
                 chunk_overlap=int(chunk_overlap),
                 threads=int(threads)
             )
-        except Exception as e:
+        except Exception as exc:
             # Error handling is done in the progress callback
-            pass
+            print(f"Error during analysis: {exc}")
 
     # Start the analysis thread
     analysis_thread = threading.Thread(target=run_analysis_thread, daemon=True)
@@ -857,15 +855,7 @@ def display_progress(progress_data):
                     # Create file URI for local access
                     file_uri = file_path.as_uri()
 
-                    # Auto-open the main graph file
-                    if file_info.get("primary", False):
-                        try:
-                            webbrowser.open_new_tab(file_uri)
-                            open_msg = " (opened in browser)"
-                        except:
-                            open_msg = ""
-                    else:
-                        open_msg = ""
+                    open_msg = ""
 
                     # Create card with clickable link
                     card_content = [

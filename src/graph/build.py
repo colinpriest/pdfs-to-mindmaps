@@ -4,7 +4,6 @@
 from typing import Dict, List, Any
 import json
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..llm.client import embed
 from ..steps.summarize_topic import summarize_topic
@@ -174,7 +173,15 @@ def build_graph_and_write(
         for pid in orphan_paper_ids:
             edges.append({"data": {"source": pid, "target": unrelated_topic_id, "rel": "member", "weight": 0.8}})
 
-    # topic ↔ technique edges: link if variant shows up in any evidence text (weak heuristic placeholder)
+    chunk_lookup = {}
+    for paper_chunks in papers_content.values():
+        for chunk in paper_chunks:
+            if isinstance(chunk, dict):
+                chunk_id = chunk.get("chunk_id")
+                if chunk_id:
+                    chunk_lookup[chunk_id] = chunk.get("text", "")
+
+    # topic ↔ technique edges: link if variant shows up in any evidence text
     connected_technique_ids = set()
     tech_index = {g["canonical"]: set(g.get("variants", [])) | {g["canonical"]} for g in norm_tech.get("groups", [])}
     for t in corpus_topics.get("topics", []):
@@ -189,6 +196,9 @@ def build_graph_and_write(
                         rationale = ev.get("rationale")
                         if rationale:
                             snippets.append(rationale)
+                        chunk_text = chunk_lookup.get(ev.get("chunk_id"))
+                        if chunk_text:
+                            snippets.append(chunk_text)
         joined = " \n ".join(snippets).lower()
         for canon, variants in tech_index.items():
             if any(v.lower() in joined for v in variants if v):

@@ -1,7 +1,6 @@
 # =============================
 # FILE: src/steps/content_type_detector.py
 # =============================
-from typing import List
 from ..llm.client import chat_structured
 from ..llm.schemas import ContentType
 
@@ -30,8 +29,9 @@ def detect_content_type(content: str) -> ContentType:
     Returns:
         ContentType object with classification, confidence, and reasoning
     """
-    # Truncate content to avoid token limits
-    truncated_content = content[:2000] if len(content) > 2000 else content
+    # Truncate to ~2000 words to avoid token limits
+    words = content.split()
+    truncated_content = " ".join(words[:2000]) if len(words) > 2000 else content
     
     return chat_structured(
         response_model=ContentType,
@@ -39,4 +39,3 @@ def detect_content_type(content: str) -> ContentType:
         user=_CONTENT_TYPE_USER_TPL.format(content=truncated_content),
         temperature=0.1
     )
-

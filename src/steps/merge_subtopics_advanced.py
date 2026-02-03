@@ -1,7 +1,7 @@
 from typing import Dict, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..llm.client import chat_structured, embed
-from ..llm.schemas import TextRelevance
+from ..llm.schemas import MergeDecision
 import numpy as np
 
 def cos_sim(a, b):
@@ -19,29 +19,25 @@ def llm_judge_merge(main_topic_label: str, subtopic_label: str) -> Tuple[bool, s
     
     _MERGE_USER_TPL = (
         "MAIN TOPIC: {main_topic}\n"
-        "SUBTopic: {subtopic}\n\n"
-        "Should '{subtopic}' be merged into '{main_topic}' as a sub-concept? "
-        "If yes, suggest a better label for the merged topic that captures both concepts. "
-        "If no, respond with 'NO MERGE'."
+        "SUBTOPIC: {subtopic}\n\n"
+        "Decide if the subtopic should be merged into the main topic. "
+        "If a merge is appropriate, provide an improved merged label; otherwise keep it empty."
     )
     
     prompt = _MERGE_USER_TPL.format(main_topic=main_topic_label, subtopic=subtopic_label)
     
     try:
         response = chat_structured(
-            response_model=TextRelevance,
+            response_model=MergeDecision,
             system=_MERGE_SYS,
             user=prompt,
             temperature=0.1
         )
         
-        # Parse the response to determine if merge should happen
-        # is_relevant is a boolean, so we use it directly
-        should_merge = response.is_relevant if hasattr(response, 'is_relevant') else False
-        suggested_label = main_topic_label  # Default to original if no better suggestion
-        
+        suggested_label = response.suggested_label or main_topic_label
+
         # Use both the boolean decision and confidence score
-        return should_merge and response.confidence > 0.6, suggested_label
+        return response.should_merge and response.confidence > 0.6, suggested_label
         
     except Exception as e:
         print(f"Error in LLM merge judgment: {e}")

@@ -12,13 +12,12 @@ class PDFExtractor:
         self.overlap_words = overlap_words
 
     def extract_pages(self, pdf_path: Path) -> list[dict]:
-        doc = fitz.open(pdf_path)
         pages = []
-        for i, page in enumerate(doc):
-            text = page.get_text("text")
-            text = re.sub(r"\s+", " ", text).strip()
-            pages.append({"page": i + 1, "text": text})
-        doc.close()
+        with fitz.open(pdf_path) as doc:
+            for i, page in enumerate(doc):
+                text = page.get_text("text")
+                text = re.sub(r"\s+", " ", text).strip()
+                pages.append({"page": i + 1, "text": text})
         return pages
 
     def chunkify(self, pdf_id: str, pages: list[dict]) -> List[Dict]:

@@ -93,7 +93,7 @@ def process_single_pdf(args):
             per_paper_data["techniques"].append(technique)
     
     # Extract paper content for graph building
-    paper_content = [ch["text"] for ch in chunks_labeled]
+    paper_content = [{"chunk_id": ch["chunk_id"], "text": ch["text"]} for ch in chunks_labeled]
     
     return {
         "pdf_id": pdf_id,
