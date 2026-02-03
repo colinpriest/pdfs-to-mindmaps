@@ -6,7 +6,7 @@ import os
 import random
 import time
 from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError
+from openai import OpenAI, RateLimitError, APIConnectionError, APITimeoutError, OpenAIError
 import instructor
 from pydantic import BaseModel
 
@@ -36,7 +36,7 @@ def _call_with_backoff(func: Callable[[], _T], max_retries: int = 5) -> _T:
     for attempt in range(max_retries + 1):
         try:
             return func()
-        except RateLimitError:
+        except (RateLimitError, APIConnectionError, APITimeoutError, OpenAIError):
             if attempt >= max_retries:
                 raise
             jitter = random.uniform(0, 0.25)

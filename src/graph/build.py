@@ -74,7 +74,7 @@ HTML_TEMPLATE = """<!doctype html>
         if (d.subtopics && d.subtopics.length > 0) {
           html += `<div class=\"kv\"><b>Related Concepts</b><ul>${d.subtopics.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
         }
-        if (d.id === 'T_Unrelated' && d.unmatched_topics && d.unmatched_topics.length > 0) {
+        if (d.is_system_unrelated && d.unmatched_topics && d.unmatched_topics.length > 0) {
           html += `<div class=\"kv\"><b>Unmatched Topics</b><ul>${d.unmatched_topics.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
         }
       }
@@ -98,6 +98,9 @@ HTML_TEMPLATE = """<!doctype html>
 </body>
 </html>
 """
+
+
+SYSTEM_UNRELATED_TOPIC_ID_BASE = "__system/unrelated__"
 
 
 def build_graph_and_write(
@@ -157,13 +160,19 @@ def build_graph_and_write(
                     if pt["id"] not in member_map:
                         unmatched_topics_from_orphans.append(pt["label"])
 
-        unrelated_topic_id = "T_Unrelated"
+        existing_topic_ids = {t["id"] for t in corpus_topics.get("topics", [])}
+        unrelated_topic_id = SYSTEM_UNRELATED_TOPIC_ID_BASE
+        counter = 1
+        while unrelated_topic_id in existing_topic_ids:
+            counter += 1
+            unrelated_topic_id = f"{SYSTEM_UNRELATED_TOPIC_ID_BASE}-{counter}"
         unrelated_node_data = {
             "id": unrelated_topic_id,
             "label": "Unrelated",
             "type": "topic",
             "size": 40,
-            "summary": "Papers with no clear topic match"
+            "summary": "Papers with no clear topic match",
+            "is_system_unrelated": True,
         }
         if unmatched_topics_from_orphans:
             unrelated_node_data["unmatched_topics"] = sorted(list(set(unmatched_topics_from_orphans)))
@@ -283,6 +292,7 @@ def build_graph_and_write(
     
     # Third pass: summarize topics based on connections
     topic_summaries = {}
+    # Parallel LLM calls here are deliberate; OpenAI rate-limit return codes trigger retries/backoff in llm.client.
     with ThreadPoolExecutor(max_workers=threads) as executor:
         # Filter topic_context to only include non-pruned topics
         valid_topic_context = {k: v for k, v in topic_context.items() if k in final_topic_ids}
@@ -396,17 +406,46 @@ def generate_markdown_report(topic_context: dict, topic_summaries: dict, paper_t
         "Return only the 3 bullet points, one per line, starting with '- '. Be concise and specific."
     )
 
+    def _normalize_insights(text: str) -> tuple[str, bool]:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        bullets = [line for line in lines if line.startswith("- ")]
+        if len(bullets) == 3 and len(lines) == 3:
+            return "\n".join(bullets), True
+        return "\n".join(bullets), False
+
+    def _coerce_to_three_bullets(text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        cleaned = [line[2:].strip() if line.startswith("- ") else line for line in lines]
+        items = cleaned[:3]
+        if len(items) < 3:
+            items.extend(["No insight provided."] * (3 - len(items)))
+        return "\n".join(f"- {item}" for item in items)
+
+    def _get_insights(topic_label: str, summary: str) -> str:
+        attempts = 0
+        response = chat(_INSIGHTS_SYS, f"Topic: {topic_label}\n\nSummary: {summary}")
+        normalized, ok = _normalize_insights(response)
+        while not ok and attempts < 3:
+            attempts += 1
+            response = chat(
+                _INSIGHTS_SYS,
+                "Return exactly 3 bullet points, each starting with '- '.\n\n"
+                f"Topic: {topic_label}\n\nSummary: {summary}"
+            )
+            normalized, ok = _normalize_insights(response)
+        return normalized if ok else _coerce_to_three_bullets(response)
+
     # Sort topics by label for consistent ordering
     sorted_topics = sorted(topic_context.items(), key=lambda x: x[1]["label"])
 
-    # Generate insights for all topics in parallel
+    # Generate insights for all topics in parallel (intentional concurrency; retries/backoff live in llm.client).
     insights_map = {}
     with ThreadPoolExecutor(max_workers=threads) as executor:
         future_to_topic = {
             executor.submit(
-                chat,
-                _INSIGHTS_SYS,
-                f"Topic: {context['label']}\n\nSummary: {topic_summaries.get(topic_id, 'No summary available.')}"
+                _get_insights,
+                context["label"],
+                topic_summaries.get(topic_id, "No summary available.")
             ): topic_id
             for topic_id, context in sorted_topics
         }
