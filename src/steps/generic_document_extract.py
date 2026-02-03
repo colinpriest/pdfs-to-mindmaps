@@ -48,3 +48,4 @@ def extract_generic_document(pdf_id: str, chunks_with_sections: List[dict]) -> G
         user=_GENERIC_USER_TPL.format(pdf_id=pdf_id, jsonl=jsonl),
         temperature=0.1
     )
+

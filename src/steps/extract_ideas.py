@@ -29,3 +29,21 @@ def extract_ideas_for_topic(topic_label: str, topic_summary: str) -> TopicIdeas:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

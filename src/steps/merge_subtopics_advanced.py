@@ -1,4 +1,5 @@
 from typing import Dict, List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..llm.client import chat_structured, embed
 from ..llm.schemas import TextRelevance
 import numpy as np
@@ -64,7 +65,7 @@ def calculate_dynamic_threshold(similarities: List[float]) -> float:
     # Clamp between reasonable bounds
     return max(0.4, min(0.8, dynamic_threshold))
 
-def merge_subtopics_advanced(per_paper_results: List[Dict], corpus_topics: List[Dict], max_passes: int = 3) -> Dict[str, str]:
+def merge_subtopics_advanced(per_paper_results: List[Dict], corpus_topics: List[Dict], max_passes: int = 3, threads: int = 10) -> Dict[str, str]:
     """
     Advanced multi-pass merging with LLM judgment and dynamic thresholds.
     """
@@ -109,35 +110,44 @@ def merge_subtopics_advanced(per_paper_results: List[Dict], corpus_topics: List[
         dynamic_threshold = calculate_dynamic_threshold(all_similarities)
         print(f"  Dynamic threshold for pass {pass_num + 1}: {dynamic_threshold:.3f}")
         
-        # Process each unmatched topic
-        topics_to_remove = []
+        # Find best match for each unmatched topic
+        candidates = []
         for i, un_topic in enumerate(unmatched_topics):
             un_vec = unmatched_topic_vecs[i]
             best_sim = -1
             best_match_idx = None
-            
-            # Find best match
+
             for j, main_topic in enumerate(current_corpus_topics):
                 main_vec = main_topic_vecs[j]
                 sim = cos_sim(un_vec, main_vec)
-                
+
                 if sim > best_sim:
                     best_sim = sim
                     best_match_idx = j
-            
-            # Check if similarity meets dynamic threshold
+
             if best_sim >= dynamic_threshold:
-                main_topic = current_corpus_topics[best_match_idx]
-                
-                # Use LLM to judge the merge
-                should_merge, suggested_label = llm_judge_merge(main_topic['label'], un_topic['label'])
-                
-                if should_merge:
-                    print(f"  ✓ Merging '{un_topic['label']}' into '{main_topic['label']}' (sim: {best_sim:.3f})")
-                    subtopic_mapping[un_topic['id']] = main_topic['id']
-                    topics_to_remove.append(i)
-                else:
-                    print(f"  ✗ LLM rejected merge of '{un_topic['label']}' into '{main_topic['label']}' (sim: {best_sim:.3f})")
+                candidates.append((i, un_topic, current_corpus_topics[best_match_idx], best_sim))
+
+        # Judge all candidates in parallel
+        topics_to_remove = []
+        if candidates:
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                future_to_candidate = {
+                    executor.submit(llm_judge_merge, main_topic['label'], un_topic['label']): (i, un_topic, main_topic, best_sim)
+                    for i, un_topic, main_topic, best_sim in candidates
+                }
+                for future in as_completed(future_to_candidate):
+                    i, un_topic, main_topic, best_sim = future_to_candidate[future]
+                    try:
+                        should_merge, suggested_label = future.result()
+                        if should_merge:
+                            print(f"  ✓ Merging '{un_topic['label']}' into '{main_topic['label']}' (sim: {best_sim:.3f})")
+                            subtopic_mapping[un_topic['id']] = main_topic['id']
+                            topics_to_remove.append(i)
+                        else:
+                            print(f"  ✗ LLM rejected merge of '{un_topic['label']}' into '{main_topic['label']}' (sim: {best_sim:.3f})")
+                    except Exception as e:
+                        print(f"  Error judging merge for '{un_topic['label']}': {e}")
         
         # Remove successfully merged topics
         for idx in reversed(topics_to_remove):

@@ -108,6 +108,7 @@ def build_graph_and_write(
     norm_tech: dict,
     out_dir: str,
     papers_content: Dict[str, List[str]],
+    threads: int = 10,
 ):
     # Build nodes
     nodes, edges = [], []
@@ -130,7 +131,7 @@ def build_graph_and_write(
         tech_nodes_to_add.append({"data": {"id": nid, "label": g["canonical"], "type": "technique", "size": 22}})
 
     # New pass: Advanced multi-pass merging with LLM judgment
-    subtopic_mapping = merge_subtopics_advanced(per_paper, corpus_topics.get("topics", []))
+    subtopic_mapping = merge_subtopics_advanced(per_paper, corpus_topics.get("topics", []), threads=threads)
     
     # paper → topic edges via LLM membership scores (augmented with subtopic mapping)
     connected_paper_ids = set()
@@ -237,7 +238,7 @@ def build_graph_and_write(
         print(f"\nFound {len(orphan_topic_ids)} orphan topics. Attempting to find relevant papers...")
         topic_info_for_relinking = {t["id"]: {"label": t["label"], "summary": t.get("summary", "")} for t in corpus_topics.get("topics", [])}
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=threads) as executor:
             future_to_topic = {
                 executor.submit(
                     find_relevant_papers_for_topic,
@@ -272,7 +273,7 @@ def build_graph_and_write(
     
     # Third pass: summarize topics based on connections
     topic_summaries = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=threads) as executor:
         # Filter topic_context to only include non-pruned topics
         valid_topic_context = {k: v for k, v in topic_context.items() if k in final_topic_ids}
         futures = {
@@ -296,7 +297,7 @@ def build_graph_and_write(
 
     # Extract key ideas for each topic
     topic_ideas = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=threads) as executor:
         future_to_topic = {
             executor.submit(
                 extract_ideas_for_topic,
@@ -314,7 +315,7 @@ def build_graph_and_write(
                 print(f"Error extracting ideas for topic {topic_context[topic_id]['label']}: {e}")
 
     # Enrich papers with summaries and topics
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=threads) as executor:
         future_to_paper = {
             executor.submit(enrich_paper, papers_content[paper_id]): paper_id
             for paper_id in all_paper_ids
@@ -341,7 +342,7 @@ def build_graph_and_write(
         if rel == "mentions" and src in final_topic_ids and tgt in tech_context: # topic -> tech
             tech_context[tgt]["topics"].add(topic_context[src]["label"])
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=threads) as executor:
         future_to_tech = {
             executor.submit(enrich_technique, v["name"], sorted(list(v["topics"]))): k
             for k, v in tech_context.items() if v["topics"]
@@ -360,7 +361,7 @@ def build_graph_and_write(
                 print(f"Error enriching technique {tech_context[tech_id]['name']}: {e}")
 
     # Generate markdown report
-    generate_markdown_report(topic_context, topic_summaries, paper_title_map, out_dir)
+    generate_markdown_report(topic_context, topic_summaries, paper_title_map, out_dir, threads)
 
     # Export to Markdown Outline
     export_to_markdown_outline(topic_context, topic_ideas, out_dir)
@@ -376,41 +377,57 @@ def build_graph_and_write(
         f.write(HTML_TEMPLATE.replace("__GRAPH_JSON__", json.dumps(graph)))
 
 
-def generate_markdown_report(topic_context: dict, topic_summaries: dict, paper_title_map: dict, out_dir: str):
+def generate_markdown_report(topic_context: dict, topic_summaries: dict, paper_title_map: dict, out_dir: str, threads: int = 10):
     """Generates a markdown report with topic summaries, key insights, and paper lists."""
     from ..llm.client import chat
-    
+
     _INSIGHTS_SYS = (
         "You are a research analyst. Given a topic summary, extract the 3 most important ideas or insights. "
         "Return only the 3 bullet points, one per line, starting with '- '. Be concise and specific."
     )
-    
-    markdown_content = ["# Research Topics Report\n"]
-    
+
     # Sort topics by label for consistent ordering
     sorted_topics = sorted(topic_context.items(), key=lambda x: x[1]["label"])
-    
+
+    # Generate insights for all topics in parallel
+    insights_map = {}
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        future_to_topic = {
+            executor.submit(
+                chat,
+                _INSIGHTS_SYS,
+                f"Topic: {context['label']}\n\nSummary: {topic_summaries.get(topic_id, 'No summary available.')}"
+            ): topic_id
+            for topic_id, context in sorted_topics
+        }
+        for future in as_completed(future_to_topic):
+            topic_id = future_to_topic[future]
+            try:
+                insights_map[topic_id] = future.result()
+            except Exception as e:
+                print(f"Error generating insights for {topic_context[topic_id]['label']}: {e}")
+                insights_map[topic_id] = None
+
+    # Assemble markdown in original sorted order
+    markdown_content = ["# Research Topics Report\n"]
+
     for topic_id, context in sorted_topics:
         topic_label = context["label"]
         summary = topic_summaries.get(topic_id, "No summary available.")
         papers = sorted(list(context["papers"]))
         techniques = sorted(list(context["techs"]))
-        
+
         markdown_content.append(f"## {topic_label}\n")
         markdown_content.append(f"**Summary:**\n{summary}\n")
-        
-        # Generate key insights
-        try:
-            insights_prompt = f"Topic: {topic_label}\n\nSummary: {summary}"
-            insights_response = chat(_INSIGHTS_SYS, insights_prompt)
+
+        insights = insights_map.get(topic_id)
+        if insights:
             markdown_content.append("**Key Insights:**")
-            markdown_content.append(insights_response)
+            markdown_content.append(insights)
             markdown_content.append("")
-        except Exception as e:
-            print(f"Error generating insights for {topic_label}: {e}")
+        else:
             markdown_content.append("**Key Insights:**\n- Unable to generate insights\n")
-        
-        # List papers
+
         if papers:
             markdown_content.append("**Relevant Papers:**")
             for paper in papers:
@@ -418,8 +435,7 @@ def generate_markdown_report(topic_context: dict, topic_summaries: dict, paper_t
             markdown_content.append("")
         else:
             markdown_content.append("**Relevant Papers:** None\n")
-        
-        # List techniques
+
         if techniques:
             markdown_content.append("**Related Techniques:**")
             for technique in techniques:
@@ -427,9 +443,9 @@ def generate_markdown_report(topic_context: dict, topic_summaries: dict, paper_t
             markdown_content.append("")
         else:
             markdown_content.append("**Related Techniques:** None\n")
-        
+
         markdown_content.append("---\n")
-    
+
     # Write markdown file
     import os
     os.makedirs(out_dir, exist_ok=True)

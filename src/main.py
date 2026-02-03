@@ -3,10 +3,13 @@
 # =============================
 import argparse
 import json
+import os
 from pathlib import Path
 from tqdm import tqdm
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+DEFAULT_THREADS = (os.cpu_count() or 4) * 2
 from .pdf.extract import PDFExtractor
 from .steps.section_labeler import label_section
 from .steps.generic_section_labeler import label_generic_section
@@ -104,7 +107,7 @@ def process_single_pdf(args):
     }
 
 
-def run(pdf_dir: Path, out_dir: Path, topics: int, chunk_words: int, chunk_overlap: int, threads: int = 10):
+def run(pdf_dir: Path, out_dir: Path, topics: int, chunk_words: int, chunk_overlap: int, threads: int = DEFAULT_THREADS):
     out_dir.mkdir(parents=True, exist_ok=True)
     pdfs = sorted([p for p in Path(pdf_dir).glob("**/*.pdf")])
     if not pdfs:
@@ -180,7 +183,7 @@ def run(pdf_dir: Path, out_dir: Path, topics: int, chunk_words: int, chunk_overl
 
     # write graph & viewer
     papers_df = pd.DataFrame(paper_rows)
-    build_graph_and_write(papers_df, per_paper_results, corpus_dict, norm_dict, str(out_dir), papers_content)
+    build_graph_and_write(papers_df, per_paper_results, corpus_dict, norm_dict, str(out_dir), papers_content, threads)
 
 
 def main():
@@ -190,7 +193,7 @@ def main():
     ap.add_argument("--topics", type=int, default=12)
     ap.add_argument("--chunk_words", type=int, default=900)
     ap.add_argument("--chunk_overlap", type=int, default=120)
-    ap.add_argument("--threads", type=int, default=10, help="Number of concurrent threads for PDF processing")
+    ap.add_argument("--threads", type=int, default=DEFAULT_THREADS, help="Number of concurrent threads (default: 2x CPU count)")
     args = ap.parse_args()
     run(args.pdf_dir, args.out_dir, args.topics, args.chunk_words, args.chunk_overlap, args.threads)
 

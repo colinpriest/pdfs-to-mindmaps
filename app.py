@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import the pipeline entry point
-from src.main import run as run_pipeline
+from src.main import run as run_pipeline, DEFAULT_THREADS
 import json
 import threading
 import queue
@@ -300,7 +300,7 @@ def run_pipeline_with_progress(pdf_dir: Path, out_dir: Path, topics: int, chunk_
 
         # write graph & viewer
         papers_df = pd.DataFrame(paper_rows)
-        build_graph_and_write(papers_df, per_paper_results, corpus_dict, norm_dict, str(out_dir), papers_content)
+        build_graph_and_write(papers_df, per_paper_results, corpus_dict, norm_dict, str(out_dir), papers_content, threads)
 
         progress_callback("Complete", 100, "Analysis completed successfully!")
 
@@ -456,7 +456,7 @@ app.layout = dbc.Container([
                             dbc.Input(
                                 id="threads-input",
                                 type="number",
-                                min=1, max=64, step=1, value=10,
+                                min=1, max=64, step=1, value=DEFAULT_THREADS,
                                 className="mb-3"
                             ),
                         ], md=6),

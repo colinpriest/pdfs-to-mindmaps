@@ -31,3 +31,4 @@ def label_generic_section(chunk_text: str) -> GenericSectionLabel:
         user=_GENERIC_SECTION_USER_TPL.format(chunk=chunk_text),
         temperature=0.1
     )
+

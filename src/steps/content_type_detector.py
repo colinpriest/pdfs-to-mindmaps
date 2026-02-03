@@ -39,3 +39,4 @@ def detect_content_type(content: str) -> ContentType:
         user=_CONTENT_TYPE_USER_TPL.format(content=truncated_content),
         temperature=0.1
     )
+
