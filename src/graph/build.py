@@ -112,6 +112,9 @@ def build_graph_and_write(
     papers_content: Dict[str, List[str]],
     threads: int = 10,
 ):
+    # New pass: Advanced multi-pass merging with LLM judgment
+    subtopic_mapping = merge_subtopics_advanced(per_paper, corpus_topics.get("topics", []), threads=threads)
+
     # Build nodes
     nodes, edges = [], []
 
@@ -131,9 +134,6 @@ def build_graph_and_write(
     for g in norm_tech.get("groups", []):
         nid = f"Tech:{slug(g['canonical'])}"
         tech_nodes_to_add.append({"data": {"id": nid, "label": g["canonical"], "type": "technique", "size": 22}})
-
-    # New pass: Advanced multi-pass merging with LLM judgment
-    subtopic_mapping = merge_subtopics_advanced(per_paper, corpus_topics.get("topics", []), threads=threads)
     
     # paper → topic edges via LLM membership scores (augmented with subtopic mapping)
     connected_paper_ids = set()
