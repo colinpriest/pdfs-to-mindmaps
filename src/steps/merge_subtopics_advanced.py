@@ -137,6 +137,8 @@ def merge_subtopics_advanced(per_paper_results: List[Dict], corpus_topics: List[
                     try:
                         should_merge, suggested_label = future.result()
                         if should_merge:
+                            if suggested_label and suggested_label != main_topic["label"]:
+                                main_topic["label"] = suggested_label
                             print(f"  ✓ Merging '{un_topic['label']}' into '{main_topic['label']}' (sim: {best_sim:.3f})")
                             subtopic_mapping[un_topic['id']] = main_topic['id']
                             topics_to_remove.append(i)
